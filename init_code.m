@@ -165,7 +165,7 @@ Fst_nu = FSt - Fst_u*u; % Fst_nu = (Fst - Fst_u*u)
 
 % Slip 
 
-J_n = JSt(2, :) ;
+J_n = JSt(2, :) ; % Horizontal 
 
 dJSt_n = sym(zeros(size(J_n)));
 for j = 1:size(J_n, 2)
@@ -189,6 +189,7 @@ Fst_nu_slip = FSt_slip - Fst_u_slip*u ;
 
 
 %% Impact Map
+% Stick 
 
 % Compute the swing leg position (leg 2)
 pSw = [x + lL*cos(q2 + q3 - deg2rad(90));...
@@ -205,6 +206,13 @@ dqPlus = simplify(postImpact(1:NDof));
 
 % Impact Force Magnitude
 Fimpact = simplify(postImpact(NDof+1:NDof+2));
+
+% Slip 
+J_x = JSw(1, :) ;
+J_z = JSw(2, :) ;
+J_thilde = J_z - sign(J_x*dq)*mu_s*J_x ; 
+
+dqPlus_s = (eye(NDof)-(D\J_thilde.')*inv(J_z*(D\J_thilde.'))*J_z)*dq ; 
 
 
 %% Other functions
@@ -224,6 +232,7 @@ addpath('./gen')
 
 matlabFunction(FSt, 'File', 'gen/Fst_gen', 'Vars', {s, u});
 matlabFunction(dqPlus, 'File', 'gen/dqPlus_gen', 'Vars', {s});
+matlabFunction(dqPlus_s, 'File', 'gen/dqPlus_s_gen', 'Vars', {s});
 matlabFunction(pSw, 'File', 'gen/pSw_gen', 'Vars', {s});
 matlabFunction(dpSw, 'File', 'gen/dpSw_gen', 'Vars', {s});
 matlabFunction(dpSw, 'File', 'gen/dpSt_gen', 'Vars', {s});
