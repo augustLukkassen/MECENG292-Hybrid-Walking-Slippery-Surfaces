@@ -1,4 +1,5 @@
-function [value, isterminal, direction] = cont_slip_event(t,s,u,params)
+function [value, isterminal, direction] = cont_slip_event(t,s,params)
+    u = io_linearization(s) ; 
     lambda = Fst_gen(s, u) ; 
     lambda_x = lambda(1) ; 
     lambda_z = lambda(2) ; 

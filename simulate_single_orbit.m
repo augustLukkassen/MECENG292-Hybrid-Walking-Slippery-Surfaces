@@ -58,11 +58,22 @@ function [t_all, x_all, x_plus] = simulate_single_orbit(z_star, params)
         elseif e == 2
             x0 = x_minus ;
             t0 = te(end);
-
+          
             if mode == "stick"
                 mode = "slip";
             else
-                mode = "stick";
+                lambda = Fst_gen(x_minus, params);
+                lambda_x = lambda(1) ; 
+                lambda_z = lambda(2) ; 
+                mu = params.mu ; 
+                % Double check the x vs z
+                value = abs(lambda_x) - mu*lambda_z; 
+                if value > 0 
+                    mode = "slip" ;
+                else
+                    mode = "stick" ;
+                end
+
             end
         end
     end
