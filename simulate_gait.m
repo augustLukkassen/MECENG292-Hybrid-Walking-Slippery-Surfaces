@@ -36,14 +36,11 @@ function [t_all, x_all] = simulate_gait(z_star, params)
         lastwarn('');
         [t, x, te, ye, ie] = ode45(f_dyn, [t0 Tmax], x0, options) ;
         [wmsg, ~] = lastwarn;
-        usedSolver = 'ode45';
         if ~isempty(wmsg) && contains(wmsg, 'Unable to meet integration tolerances')
             % Try a stiff solver with slightly looser tolerances
             options15 = odeset(options, 'RelTol', 1e-3, 'AbsTol', 1e-5, 'MaxStep', 5e-3);
             lastwarn('');
             [t, x, te, ye, ie] = ode15s(f_dyn, [t0 Tmax], x0, options15) ;
-            [wmsg, ~] = lastwarn;
-            usedSolver = 'ode15s';
         end
 
         x_all = [x_all; x];

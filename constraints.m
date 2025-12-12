@@ -34,6 +34,34 @@ function [c, ceq] = constraints(z, N, nx, nu, nF, na, nb, dt, params)
     minFz = inf; maxFriction = -inf;
     slipCount = 0; stickCount = 0;
 
+    % Enforce controller matching at ALL timesteps:
+    % u(:,k) must equal the simulation controller u_ctrl(t_k, x(:,k), params, mode_k)
+    params1 = params;
+    params1.alpha = alpha;
+    params1.beta  = beta;
+    U_ctrl = zeros(nu, N);
+    for k = 1:N
+        t_k = (k-1) * dt;
+        if k <= (N1 - 1) || k >= (N2 + 1)
+            mode_k = "slip";
+        else
+            mode_k = "stick";
+        end
+        try
+            uk = io_linearization(t_k, X(:, k), params1, mode_k);
+            if any(~isfinite(uk)) || numel(uk) ~= nu
+                uk = zeros(nu, 1);
+            end
+            U_ctrl(:, k) = uk(:);
+        catch
+            % If controller evaluation fails (e.g., singular decoupling matrix),
+            % return a finite value so the optimizer can steer away.
+            U_ctrl(:, k) = zeros(nu, 1);
+        end
+    end
+    ceq = [ceq;
+           U_vec - U_ctrl(:)];
+
     for i = 2:2:(N-1)
         im1 = i - 1;
         ip1 = i + 1;
@@ -84,15 +112,6 @@ function [c, ceq] = constraints(z, N, nx, nu, nF, na, nb, dt, params)
         c = [c;
              abs(Fx) - mu * Fz;
             -Fz];
-
-        % Enforce that decision input matches the simulation controller
-        % (keeps optimization/controller consistent)
-        t_i = (i-1) * dt;
-        params1 = params;
-        params1.alpha = alpha;
-        params1.beta  = beta;
-        ceq = [ceq;
-               u_i - io_linearization(t_i, x_i, params1, mode)] ;
 
     end
 
