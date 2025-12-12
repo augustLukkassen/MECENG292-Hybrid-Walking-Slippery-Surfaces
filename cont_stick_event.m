@@ -3,9 +3,10 @@ function [value, isterminal, direction] = cont_stick_event(t,s, z, params)
     % Occurs when friction constraint is violated: |F_x| > mu * F_z
     
     mode = "stick";
-    u = io_linearization(t, s, params, mode);
+    s10 = s(1:10);
+    u = io_linearization(t, s10, params, mode);
     
-    lambda = Fst_gen(s, u) ; 
+    lambda = Fst_gen(s10, u) ; 
     lambda_x = lambda(1) ; 
     lambda_z = lambda(2) ; 
     mu = params.mu ; 

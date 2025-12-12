@@ -1,128 +1,68 @@
-function [c, ceq] = constraints(z, N, nx, nu, nF, na, nb, dt, params)
+function [cineq, ceq] = constraints(z, params)
 
-    idx_X_end     = nx * N;
-    idx_U_end     = idx_X_end  + nu * N;
-    %idx_F_end     = idx_U_end  + nF * N;
-    idx_alpha_end = idx_U_end  + na;
-    idx_beta_end  = idx_alpha_end + nb;
+    MAX_TIME_STEPS = 1000;
+    MAX_CONSTRAINTS = MAX_TIME_STEPS * 5;
+    tol = 1e-3;
 
-    X_vec     = z(1                : idx_X_end);
-    U_vec     = z(idx_X_end + 1    : idx_U_end);
-    %F_vec     = z(idx_U_end + 1    : idx_F_end);
-    Alpha_vec = z(idx_U_end + 1    : idx_alpha_end);
-    Beta_vec  = z(idx_alpha_end + 1 : idx_beta_end);
+    try
+        x0 = z(1:10);
+        alpha = z(11:14);
+        beta  = z(15:18);
 
-    X = reshape(X_vec, nx, N);
-    U = reshape(U_vec, nu, N);
-    %F = reshape(F_vec, nF, N);
+        params1 = params;
+        params1.alpha = alpha;
+        params1.beta  = beta;
 
-    alpha = Alpha_vec(:);
-    beta  = Beta_vec(:);
+        [t, x_w_cost, x_plus, mode_all] = simulate_single_orbit(z, params1);
 
-    a0 = alpha(1); a1 = alpha(2); a2 = alpha(3); a3 = alpha(4) ;
-    b0 = beta(1); b1 = beta(2); b2 = beta(3); b3 = beta(4) ;
-
-    % Hardcoded Transition Times 
-    N1 = params.N1;
-    N2 = params.N2;
-
-    h = 2 * dt;
-
-    ceq = [];
-    c   = [];
-
-    minFz = inf; maxFriction = -inf;
-    slipCount = 0; stickCount = 0;
-
-    % Enforce controller matching at ALL timesteps:
-    % u(:,k) must equal the simulation controller u_ctrl(t_k, x(:,k), params, mode_k)
-    params1 = params;
-    params1.alpha = alpha;
-    params1.beta  = beta;
-    U_ctrl = zeros(nu, N);
-    for k = 1:N
-        t_k = (k-1) * dt;
-        if k <= (N1 - 1) || k >= (N2 + 1)
-            mode_k = "slip";
-        else
-            mode_k = "stick";
+        if isempty(t)
+            ceq = ones(9, 1) * 1e3;
+            cineq = ones(MAX_CONSTRAINTS, 1) * 1e3;
+            return;
         end
-        try
-            uk = io_linearization(t_k, X(:, k), params1, mode_k);
-            if any(~isfinite(uk)) || numel(uk) ~= nu
-                uk = zeros(nu, 1);
+
+        x = x_w_cost(:, 1:10);
+        N = length(t);
+        Ns = min(N, MAX_TIME_STEPS);
+        idxs = unique(round(linspace(1, N, Ns)));
+        Ns = numel(idxs);
+
+        ceq = x0(2:10) - x_plus(2:10);
+
+        cineq = ones(MAX_CONSTRAINTS, 1) * -1e6;
+
+        for j = 1:Ns
+            k = idxs(j);
+            xk = x(k, :)';
+            mk = mode_all(k);
+            u = io_linearization(t(k), xk, params1, mk);
+
+            if mk == "stick"
+                Fst = Fst_gen(xk, u);
+            else
+                Fst = Fst_s_gen(xk, u);
             end
-            U_ctrl(:, k) = uk(:);
-        catch
-            % If controller evaluation fails (e.g., singular decoupling matrix),
-            % return a finite value so the optimizer can steer away.
-            U_ctrl(:, k) = zeros(nu, 1);
+            Fx = Fst(1);
+            Fz = Fst(2);
+            cone = abs(Fx) - params1.mu * Fz;
+
+            pSt = pSt_gen(xk);
+            dpSt = dpSt_gen(xk);
+
+            idx = (j - 1) * 5;
+            cineq(idx + 1) = -Fz;
+            cineq(idx + 2) = cone;
+            cineq(idx + 3) = abs(pSt(2)) - tol;
+            cineq(idx + 4) = abs(dpSt(2)) - tol;
+            if mk == "stick"
+                cineq(idx + 5) = abs(dpSt(1)) - tol;
+            else
+                cineq(idx + 5) = -1e6;
+            end
         end
+
+    catch
+        ceq = ones(9, 1) * 1e3;
+        cineq = ones(MAX_CONSTRAINTS, 1) * 1e3;
     end
-    ceq = [ceq;
-           U_vec - U_ctrl(:)];
-
-    for i = 2:2:(N-1)
-        im1 = i - 1;
-        ip1 = i + 1;
-
-        x_im1 = X(:, im1);   u_im1 = U(:, im1);   %f_im1 = F(:, im1);
-        x_i   = X(:, i);     u_i   = U(:, i);     %f_i   = F(:, i);
-        x_ip1 = X(:, ip1);   u_ip1 = U(:, ip1);   %f_ip1 = F(:, ip1);
-
-        if i <= (N1 - 1) || i >= (N2 + 1)
-            % Slip Dynamics 
-            dyn_fun = @slip_dynamics_opt;
-            [y, Lfy, Lf2y, LgLfy] = lie_derivatives_gen_s(x_i, ...
-                a0,a1,a2,a3, b0,b1,b2,b3);
-            FSt = Fst_s_gen(x_i, u_i);  
-            mode = "slip";
-            slipCount = slipCount + 1;
-        else
-            % Stick Dynamics 
-            dyn_fun = @stick_dynamics_opt;
-            [y, Lfy, Lf2y, LgLfy] = lie_derivatives_gen(x_i, ...
-                a0,a1,a2,a3, b0,b1,b2,b3);
-            FSt = Fst_gen(x_i, u_i);  
-            stickCount = stickCount + 1;
-            mode = "stick";
-        end
-
-        dx_im1 = dyn_fun(x_im1, u_im1);
-        dx_i   = dyn_fun(x_i,   u_i);
-        dx_ip1 = dyn_fun(x_ip1, u_ip1);
-
-        defect1 = x_i - 0.5 * (x_im1 + x_ip1) - (h/8) * (dx_im1 - dx_ip1);
-        defect2 = x_ip1 - x_im1 - (h/6) * (dx_im1 + 4*dx_i + dx_ip1);
-
-        ceq = [ceq;
-               defect1;
-               defect2];
-        
-        
-        Fx = FSt(1);
-        Fz = FSt(2);
-        mu = params.mu;
-
-        minFz = min(minFz, Fz);
-        if Fz ~= 0
-            maxFriction = max(maxFriction, abs(Fx) / Fz);
-        end
-
-        c = [c;
-             abs(Fx) - mu * Fz;
-            -Fz];
-
-    end
-
-    x_start = X(:, 1);
-    x_end   = X(:, N);
-
-    % Periodicity 
-    %mode = "stick" ;
-    [x_plus, ~] = impact(x_end, params) ; 
-    % Temporarily scale periodicity to ease feasibility search
-    periodicity_scale = 0.3;
-    ceq = [ceq;
-           periodicity_scale * (x_start(2:10) - x_plus(2:10))] ;
 end

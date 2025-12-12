@@ -176,7 +176,7 @@ end
 F_n = - pinv(J_n*(D\J_n')) * ( J_n*(D\(-H + B*u)) + dJSt_n*dq);
 
 % Tangential Force 
-mu_s = 0.8 ;
+mu_s = 0.4 ;
 
 J_t = JSt(1, :) ; 
 dx_s = J_t * dq ; 

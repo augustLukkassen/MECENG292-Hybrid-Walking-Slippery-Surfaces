@@ -1,4 +1,14 @@
 function u = io_linearization(t, s, params, mode)
+    persistent gen_path_added
+    if isempty(gen_path_added)
+        root = fileparts(mfilename('fullpath'));
+        gen_dir = fullfile(root, 'gen');
+        if exist(gen_dir, 'dir')
+            addpath(gen_dir);
+        end
+        gen_path_added = true;
+    end
+
     a = 0.9;
     epsilon = 0.1;
 
@@ -36,7 +46,7 @@ function u = io_linearization(t, s, params, mode)
     kp = 100;
     kd = 20;
     y_dot = Lfy;
-    %v = -kp * y - kd * y_dot;
+    v = -kp * y - kd * y_dot;
     
     % This part is the same
     u = LgLfy \ (-Lf2y + v);

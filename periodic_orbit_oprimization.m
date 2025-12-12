@@ -1,69 +1,37 @@
-%% Init
-addpath('./gen')
-nx = 10 ; nu = 2 ; nF = 2; na = 4 ; nb = 4 ; 
-
-horizon = 0.9 ; 
-dt = 0.05 ; 
-% Ensure N is an integer grid count (avoid floating rounding issues)
-N = round(horizon / dt) ; 
-% Ensure N is odd so the collocation loop (2:2:N-1) can include i = N-1
-if mod(N, 2) == 0
-    N = N + 1;
-end
-
+%% Optimization init/seed 
 x0 = [0 ; 0.9239; 2.2253; 3.0107; 0.5236; 0.8653; 0.3584; -1.0957; -2.3078; 2.0323] ;
 
-% Init Parameters (needed for controller-consistent initial U guess)
-params.N1 = round(0.3*N) ; 
-params.N2 = round(0.7*N) ; 
-params.mu = 0.8 ; 
-R = eye(5) ; 
-R(3:4,3:4) = [0 1; 1 0] ;
-params.relabel = R ;
-% Soften output dynamics to ease feasibility search
-params.eps = 0.02; 
+alpha_0 = [pi/6; 0; 0; 0] ; 
+beta_0 = zeros(4,1) ; 
+z0 = [x0; alpha_0; beta_0] ;  
 
-% Build a 10xN state initial guess (repeat the 10x1 state across time)
-z0_x = repmat(x0, 1, N) ; 
+params = struct();
+params.mu = 0.8;
+params.Tmax = 2;
+params.v_stick_tol = 1e-2;
+params.max_segments = 30;
 
-% Simple initial guesses (remove controller-consistent seeding)
-z0_u = 0.05 * ones(nu, N) ; 
-z0_alpha = zeros(na, 1);
-z0_beta  = zeros(nb, 1);
-z0_F = zeros(nF, N) ; 
 
-% Decision Vector 
-z0 = [z0_x(:) ;
-      z0_u(:) ; 
-      %z0_F(:) ;
-      z0_alpha ; 
-      z0_beta ] ;
-
-% Bounds 
-LB = -Inf(size(z0));
-UB =  Inf(size(z0));
+%% Linear Constraints 
+Aineq = []; Bineq = []; Aeq = []; Beq = []; LB = [] ; UB = [] ; 
+LB = -inf(1,18)' ; 
+LB(1:2) = 0 ; 
+LB(3:5) = -2*pi ; 
+UB = inf(1,18)' ;
+UB(1) = 1 ; 
+UB(3:5) = 2*pi ; 
 
 %% Optimization
 options = optimset('display','iter','MaxFunEvals',12000,'MaxIter',2000,'diffmaxchange',1.1*1e-5, ...
     'diffminchange',1e-5);
+options = optimset(options,'MaxIter',25,'MaxFunEvals',800);
 
-[z_star, J_star] = fmincon(@(z) objective(z, nx, nu, N), ...
-                           z0, [], [], [], [], LB, UB, ...
-                           @(z) constraints(z,N,nx,nu,nF,na,nb,dt,params), ...
-                           options); 
+[z_star, cost_optimal] = fmincon(@periodic_orbit_obj, z0, Aineq, Bineq, ...
+    Aeq, Beq, LB, UB , @constraints, options, params) ;
 
-% Extract Control Parameters
-idx_X_end     = nx * N;
-idx_U_end     = idx_X_end  + nu * N;
-idx_alpha_end = idx_U_end  + na;
-idx_beta_end  = idx_alpha_end + nb;
-
-params.alpha = z_star(idx_U_end + 1 : idx_alpha_end);
-params.beta  = z_star(idx_alpha_end + 1 : idx_beta_end);
-
-%% Simulation & Animation 
-[t, x] = simulate_gait(z_star, params) ;
-
-% animateThreeLink(t,x)
-
-%% Plot 
+%% Simulate one orbit
+params1 = params;
+params1.alpha = z_star(11:14);
+params1.beta  = z_star(15:18);
+[t, x, x_plus] = simulate_single_orbit(z_star, params1);
+disp('Finished simulate_single_orbit');
