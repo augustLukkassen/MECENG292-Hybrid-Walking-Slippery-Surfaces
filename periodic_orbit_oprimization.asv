@@ -1,0 +1,45 @@
+%% Init
+nx = 10 ; nu = 2 ; nF = 2; na = 4 ; nb = 4 ; 
+
+horizon = 10 ; 
+dt = 0.01 ; 
+N = horizon / dt ; 
+
+x0 = [0 ; 0.9239; 2.2253; 3.0107; 0.5236; 0.8653; 0.3584; -1.0957; -2.3078; 2.0323] ;
+
+z0_x = repmat(x0, nx, N) ; 
+z0_u = zeros(nu, N) ; 
+z0_F = zeros(nF, N) ; 
+
+% Decision Vector 
+z0 = [z0_x(:) ;
+      z0_u(:) ; 
+      %z0_F(:) ;
+      z0_alpha ; 
+      z0_beta ] ;
+
+% Bounds 
+LB = -Inf(size(z0));
+UB =  Inf(size(z0));
+
+% Init Parameters
+params.N1 = round(0.3*N) ; 
+params.N2 = round(0.7*N) ; 
+params.mu = 0.8 ; 
+params.relabel =
+%% Optimization
+
+options = optimset('display','iter','MaxFunEvals',20000,'MaxIter',20000,'diffmaxchange',1.1*1e-5, ...
+    'diffminchange',1e-5);
+
+[z_star, J_star] = fmincon(@(z) objective(z, nx, nu), ...
+                           z0, [], [], [], [], LB, UB, ...
+                           @(z) constraints(z,N,nx,nu,nF,na,nb,dt,params), ...
+                           options); 
+
+%% Simulation & Animation 
+[t, x] = simulate_three_link_walker(z_star) ;
+
+animateThreeLink(t,x)
+
+%% Plot 
